@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Basic EC2 Instance.also see file changes
+Description: Basic EC2 Instance also with git 
 
 Resources:
   MoazzamEC2Instance:
