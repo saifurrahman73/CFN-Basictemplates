@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Conditions Intro
+
+Mappings:
+  MyregionMap:
+    us-east-1:
+      AmiId: ami-03d315ad33b9d49c4
+    us-west-2:
+      AmiId: ami-0928f4202481dfdf6
+  MyEnvMap:
+    dev:
+      InstanceType: t2.micro
+    prod:
+      InstanceType: t2.small
+    qa:
+      InstanceType: t2.small
+
+Parameters:
+  MyKeyName:
+    Description: Parametrizing the key name 
+    Type: AWS::EC2::KeyPair::KeyName
+  MyAZ:
+    Description: Parametrizing the  Availabilty Zone
+    Type: String
+    Default: us-west-2a
+    AllowedValues:
+      - us-west-2a
+      - us-west-2b
+      - us-west-2c
+  EnvType:
+    Description: Parametrizing the  Instance type from SSM
+    Type: String
+    Default: dev
+    AllowedValues: 
+      - dev
+      - prod
+      - qa
+
+
+Conditions:
+  CreateEIPforProd: !Equals [!Ref EnvType, prod]
+  CreateSGforDev: !Not [{Condition: CreateSGforProd}]
+  CreateSGforProd: !Equals [!Ref EnvType, prod]
+  IfRegionKeyName: !And [!Or [!Equals [!Ref 'AWS::Region', us-east-1], !Equals [!Ref 'AWS::Region', us-west-2]], !Equals [!Ref EnvType, prod]]
+Resources:
+  MoazzamEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !FindInMap
+        - MyregionMap
+        - !Ref AWS::Region
+        - AmiId
+      InstanceType: !FindInMap
+        - MyEnvMap
+        - !Ref EnvType
+        - InstanceType
+      KeyName: !If [IfRegionKeyName, !Ref MyKeyName, !Ref 'AWS::NoValue']
+      AvailabilityZone: !Ref MyAZ
+      SecurityGroups: !If [CreateSGforDev, [!Ref SSHSGDev], [!Ref SSHSGProd]]
+      
+  EIPforEC2:
+    Condition: CreateEIPforProd
+    Type: AWS::EC2::EIP
+    Properties: 
+      InstanceId: !Ref MoazzamEC2Instance 
+  
+  SSHSGDev: 
+    Type: AWS::EC2::SecurityGroup
+    
+    Properties:
+      GroupDescription: SSH Security Group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: "22"
+          ToPort: "22"
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: "8080"
+          ToPort: "8080"
+          CidrIp: 0.0.0.0/0
+  SSHSGProd: 
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateSGforProd 
+    Properties:
+      GroupDescription: SSH  Security Group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: "22"
+          ToPort: "22"
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: "8080"
+          ToPort: "8080"
+          CidrIp: 0.0.0.0/0

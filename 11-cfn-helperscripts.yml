@@ -1,0 +1,97 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Parameter Intro
+Parameters:
+  MyKeyName:
+    Description: Parametrizing the key name 
+    Type: AWS::EC2::KeyPair::KeyName
+  
+  MyAZ:
+    Description: Parametrizing the  Availabilty Zone
+    Type: String
+    Default: us-west-2a
+    AllowedValues:
+      - us-west-2a
+      - us-west-2b
+      - us-west-2c
+  
+  MyEC2Type:
+    Description: Parametrizing the  Instance type from SSM
+    Type: t2.micro
+    Default: us-west-2a
+    AllowedValues:
+      - t2.small
+      - t2.medium
+
+
+Resources:
+  
+  
+  MoazzamEC2Instance:
+    Type: AWS::EC2::Instance
+    Metadata:
+      Comment: Deploy a Tomcat in Ubuntu
+      AWS::CloudFormation::Init:
+        Tomcat:
+          packages:
+            apt:
+              apt install openjdk-11-jdk: []
+          groups:
+            tomcat: {}
+            groupone: {}
+            grouptwo:
+              gid: "501"
+          users:
+            tomcat:
+              groups:
+                - tomcat
+              homeDir: "/opt/tomcat"
+          sources:
+            /tmp: https://www-eu.apache.org/dist/tomcat/tomcat-9/9.0.44/bin/apache-tomcat-9.0.44.tar.gz
+          files:
+            "/etc/cfn/cfm-hup.conf":
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+              mode: "0400"
+              owner: "root"
+              group: "root"
+            "/etc/cfn/hooks.d/cfn-auto-reloader.conf":
+              content: !Sub |
+                [cfn-auto-reloader-hook] 
+                triggers=post.update
+                path=Resources.MoazzamEC2Instance.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource MoazzamEC2Instance --region $[AWS::Region}
+              mode: "0400"
+              owner: "root"
+              group: "root"
+
+
+          commands:
+            :
+          services:
+            :
+
+    Properties:
+      ImageId: ami-0928f4202481dfdf6
+      InstanceType: !Ref MyEC2Type
+      KeyName: !Ref MyKeyName
+      SecurityGroups:
+        - default
+        - !Ref SSHSecurityGroup
+      AvailabilityZone: !Ref MyAZ
+  
+  
+  SSHSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SSH Security Group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: "22"
+          ToPort: "22"
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: "8080"
+          ToPort: "8080"
+          CidrIp: 0.0.0.0/0

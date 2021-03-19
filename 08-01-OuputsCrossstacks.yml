@@ -1,0 +1,16 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Basic EC2 Instance.
+
+Resources:
+  MoazzamEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0928f4202481dfdf6
+      InstanceType: t2.micro
+      AvailabilityZone: !ImportValue out1-InstanceAz
+      KeyName: moazzam-oregon
+      SecurityGroups:
+        - !ImportValue MySSHSGDev
+  
+
+
