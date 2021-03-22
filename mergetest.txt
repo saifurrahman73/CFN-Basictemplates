@@ -1,2 +1,1 @@
-testing merger
-lets test git revert 
+this is comparsion file 
