@@ -10,3 +10,5 @@ RUN apk add --no-cache \
 RUN aws --version
 ENTRYPOINT [ awscli ]
 CMD [s3, ls ]
+
+
