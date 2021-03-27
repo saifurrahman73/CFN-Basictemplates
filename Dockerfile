@@ -6,9 +6,6 @@ RUN apk add --no-cache \
     && pip3 install \
         awscli \
     && rm -rf /var/cache/apk/*
-
 RUN aws --version
-ENTRYPOINT [ awscli ]
-CMD [s3, ls ]
-
-
+ENTRYPOINT [ "aws" ]
+CMD [ "s3","ls","*" ]
