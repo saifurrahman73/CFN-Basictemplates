@@ -8,4 +8,4 @@ RUN apk add --no-cache \
     && rm -rf /var/cache/apk/*
 RUN aws --version
 ENTRYPOINT [ "aws" ]
-CMD [ "s3","ls","*" ]
+CMD [ "--version" ]
