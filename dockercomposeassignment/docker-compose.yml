@@ -1,0 +1,25 @@
+version: '2'
+services:
+  apachewebapp:
+    build: ./phythonapp
+    volumes:
+      - ./phythonapp:/code
+    environment:
+        FLASK_ENV: development
+
+  redis:
+    image: "redis:alpine"
+  
+  reverseproxy:
+    build: ./proxyserver
+    ports:
+      - 8080:8080
+      - 8081:8081
+    restart: always
+
+  nginx:
+    depends_on:
+      - reverseproxy
+    build: ./nginxstatic
+    restart: always
+  
