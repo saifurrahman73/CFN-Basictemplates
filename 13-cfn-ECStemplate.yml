@@ -1,0 +1,345 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Basic EC2 Instance also with git
+Mappings:
+
+  NetworkToSubnet:
+    "10.0.0.0":
+          PubSubnetZoneA: 10.0.10.0/24
+          PrivSubnetZoneA: 10.0.20.0/24
+          PubSubnetZoneB: 10.0.30.0/24
+          PrivSubnetZoneB: 10.0.40.0/24
+
+
+
+Resources:
+
+# Cluster  creation and setting 
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: Moazzamcluster
+
+# Service Configurations      
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: ECSALBListenerRuleProd
+    Properties:
+      Cluster: !Ref ECSCluster
+      LaunchType: FARGATE
+      LoadBalancers:
+      - ContainerName: wordpress
+        ContainerPort: '80'
+        TargetGroupArn: !Ref 'ECSTargetGroup'
+      DeploymentConfiguration:
+        MaximumPercent: 100
+        MinimumHealthyPercent: 50
+      TaskDefinition: !Ref ECSTaskDefinition
+      Role: "arn:aws:iam::020046395185:role/ecsServiceRole" 
+      DesiredCount: 1
+# Task defination settings
+  ECSTaskDefinition: 
+    Type: "AWS::ECS::TaskDefinition"
+    Properties: 
+      NetworkMode: "bridge"
+      TaskRoleArn: "arn:aws:iam::020046395185:role/ecsTaskExecutionRole"
+      ExecutionRoleArn: "arn:aws:iam::020046395185:role/ecsTaskExecutionRole"
+      Cpu: 1024
+      Memory: 1024
+      ContainerDefinitions: 
+        - 
+          Name: "wordpress"
+          MountPoints: 
+            - ContainerPath: "/var/www/my-vol"
+              SourceVolume: "my-vol"
+              
+          Image: "wordpress"
+          Cpu: 256
+          Memory: 256
+          Environment:
+            - Name: WORDPRESS_DB_HOST
+              Value: "wordpress"
+            - Name: WORDPRESS_DB_USER
+              Value: "wordpress"
+            - Name: WORDPRESS_DB_PASSWORD
+              Value: "wordpress"
+            - Name: WORDPRESS_DB_NAME
+              Value: "wordpress"
+          PortMappings: 
+            - ContainerPort: 80
+              HostPort: 0
+          Essential: true
+          Links:
+            - mysql
+        - 
+          Name: "mysql"
+          Image: "mysql:5.7"
+          Cpu: 256
+          Memory: 256
+          Essential: false
+          Environment:
+            - Name: MYSQL_DATABASE
+              Value: "wordpress"
+            - Name: MYSQL_USER
+              Value: "wordpress"
+            - Name: MYSQL_PASSWORD
+              Value: "wordpress"
+            - Name: MYSQL_RANDOM_ROOT_PASSWORD
+              Value: "wordpress"
+          MountPoints: 
+            - ContainerPath: "/var/lib/mysql"
+              SourceVolume: "db"   
+
+      Volumes:
+        - Name: "my-vol"
+          Host:
+            SourcePath: "/var/lib/docker/vfs/dir"
+        - Name: "db"
+          Host: 
+            SourcePath: "/var/lib/docker/vfs/dir"
+
+  # load balancer and target group setting 
+  ELBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "SSH and Port 80"
+      VpcId:
+        Ref: "VPC"
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+  
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing 
+      Subnets:
+      - Ref: PubSubnetZoneA
+      - Ref: PubSubnetZoneB
+      SecurityGroups:
+      - Ref: ELBSecurityGroup
+  
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn:
+          Ref: ECSTargetGroup
+      LoadBalancerArn:
+        Ref: ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP  
+  
+  ECSALBListenerRuleProd:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    DependsOn: ALBListener
+    Properties:
+      Actions:
+      - Type: forward
+        TargetGroupArn: !Ref "ECSTargetGroup"
+      Conditions:
+      - Field: path-pattern
+        Values: [/]
+      ListenerArn: !Ref "ALBListener"
+      Priority: 1  
+
+  ECSTargetGroup:
+      Type: AWS::ElasticLoadBalancingV2::TargetGroup
+      Properties:
+        HealthCheckIntervalSeconds: 10
+        HealthCheckPath: /
+        HealthCheckProtocol: HTTP
+        HealthCheckTimeoutSeconds: 5
+        HealthyThresholdCount: 2
+        Matcher:
+          HttpCode: "200,301,302,346"
+        Name: ECSTargetGroup
+        Port: 80
+        Protocol: HTTP
+        UnhealthyThresholdCount: 2
+        VpcId:
+          Ref: 'VPC'
+
+    # VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock:
+          'Fn::Join': [ '/', [ '10.0.0.0', '16' ] ]
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      InstanceTenancy: 'default'
+
+    # Internet accessable subnet in the first availability zone
+  PubSubnetZoneA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+        - '0'
+        - Fn::GetAZs:
+            Ref: 'AWS::Region'
+      CidrBlock:
+          Fn::FindInMap:
+          - NetworkToSubnet
+          - "10.0.0.0"
+          - PubSubnetZoneA
+      MapPublicIpOnLaunch: 'True'
+      VpcId:
+        Ref: 'VPC'
+
+    # Non-internet accessable subnet in the first availability zone
+  PrivSubnetZoneA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+        - '0'
+        - Fn::GetAZs:
+            Ref: 'AWS::Region'
+      CidrBlock:
+          Fn::FindInMap:
+          - NetworkToSubnet
+          - "10.0.0.0"
+          - PrivSubnetZoneA
+      MapPublicIpOnLaunch: 'False'
+      VpcId:
+        Ref: 'VPC'
+    # Internet accessable subnet in the second availability zone
+  PubSubnetZoneB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+        - '1'
+        - Fn::GetAZs:
+            Ref: 'AWS::Region'
+      CidrBlock:
+          Fn::FindInMap:
+          - NetworkToSubnet
+          - "10.0.0.0"
+          - PubSubnetZoneB
+      MapPublicIpOnLaunch: 'True'
+      VpcId:
+        Ref: 'VPC'
+
+    # Non-internet accessable subnet in the second availability zone
+  PrivSubnetZoneB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+        - '1'
+        - Fn::GetAZs:
+            Ref: 'AWS::Region'
+      CidrBlock:
+          Fn::FindInMap:
+          - NetworkToSubnet
+          - "10.0.0.0"
+          - PrivSubnetZoneB
+      MapPublicIpOnLaunch: 'False'
+      VpcId:
+        Ref: 'VPC'
+    # Gateway to the internet
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: 'Name'
+          Value:
+            Ref: 'AWS::StackName'
+    # Associate the gateway to the VPC
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId:
+        Ref: 'InternetGateway'
+      VpcId:
+        Ref: 'VPC'
+
+    # Routing table for the public subnet in availability zone A
+  RouteTablePubZoneA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: 'VPC'
+    # Routing table for the public subnet in availability zone B
+  RouteTablePubZoneB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: 'VPC'
+    # Route traffic through the internet gateway
+  RoutePubZoneA:
+    DependsOn:
+      - InternetGateway
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId:
+        Ref: 'InternetGateway'
+      RouteTableId:
+        Ref: 'RouteTablePubZoneA'
+
+    # Route traffic through the internet gateway
+  RoutePubZoneB:
+    DependsOn:
+      - InternetGateway
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: 'InternetGateway'
+      RouteTableId:
+        Ref: 'RouteTablePubZoneB'
+
+    # Associate public subnet to its routing table
+  RouteAssociationPubSubnetZoneA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: 'PubSubnetZoneA'
+      RouteTableId:
+        Ref: 'RouteTablePubZoneA'
+
+    # Associate public subnet to its routing table
+  RouteAssociationPubSubnetZoneB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: 'PubSubnetZoneB'
+      RouteTableId:
+        Ref: 'RouteTablePubZoneB'
+
+    # Routing table for the private subnet in availability zone A
+  RouteTablePrivZoneA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: 'VPC'
+    # Routing table for the private subnet in availability zone B
+  RouteTablePrivZoneB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: 'VPC'
+    # Associate the private subnet with its routing table
+  RouteAssociationPrivSubnetZoneA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: 'PrivSubnetZoneA'
+      RouteTableId:
+        Ref: 'RouteTablePrivZoneA'
+
+    # Associate the private subnet with its routing table
+  RouteAssociationPrivSubnetZoneB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: 'PrivSubnetZoneB'
+      RouteTableId:
+        Ref: 'RouteTablePrivZoneB'

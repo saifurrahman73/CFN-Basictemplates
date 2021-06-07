@@ -1,0 +1,68 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Basic EC2 Instance also with git
+
+Resources:
+
+# Cluster  creation and setting 
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: Moazzamcluster
+  ECSTaskDefinition: 
+    Type: AWS::ECS::TaskDefinition
+    Properties: 
+      NetworkMode: bridge
+      TaskRoleArn: arn:aws:iam::020046395185:role/ecsTaskExecutionRole
+      ExecutionRoleArn: arn:aws:iam::020046395185:role/ecsTaskExecutionRole
+      Cpu: 1024
+      Memory: 1024
+      ContainerDefinitions: 
+          - 
+            Name: wordpress
+            MountPoints: 
+              - ContainerPath: /var/www/my-vol
+                SourceVolume: my-vol    
+            Image: wordpress
+            Cpu: 256
+            Memory: 256
+            Environment:
+              - Name: WORDPRESS_DB_HOST
+                Value: "wordpress"
+              - Name: WORDPRESS_DB_USER
+                Value: "wordpress"
+              - Name: WORDPRESS_DB_PASSWORD
+                Value: "wordpress"
+              - Name: WORDPRESS_DB_NAME
+                Value: "wordpress"
+            PortMappings: 
+              - ContainerPort: 80
+                HostPort: 0
+            Links:
+              - mysql
+            Essential: true
+          - 
+            Name: mysql
+            Image: mysql:5.7
+            Cpu: 256
+            Memory: 256
+            Essential: false
+            Environment:
+              - Name: MYSQL_DATABASE
+                Value: "wordpress"
+              - Name: MYSQL_USER
+                Value: "wordpress"
+              - Name: MYSQL_PASSWORD
+                Value: "wordpress"
+              - Name: MYSQL_RANDOM_ROOT_PASSWORD
+                Value: "wordpress"
+            MountPoints: 
+              - ContainerPath: /var/lib/mysql
+                SourceVolume: db   
+
+      Volumes:
+        - Name: my-vol
+          Host:
+            SourcePath: /var/lib/docker/vfs/dir
+        - Name: db
+          Host: 
+            SourcePath: /var/lib/docker/vfs/dir
