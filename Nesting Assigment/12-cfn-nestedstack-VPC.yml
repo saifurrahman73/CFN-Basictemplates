@@ -1,0 +1,173 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Nested Stack testing
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "VPC Configuration"
+        Parameters: 
+          - VPCCidr
+          - PublicCidr
+          - PrivateCidr
+
+
+Parameters:
+  VPCCidr:
+    Type: String
+    Default: 172.0.0.0/16
+    Description: VPC Cidr range
+  PublicCidr:
+    Type: String
+    Default: 172.0.1.0/24
+    Description: Public Cidr range
+  PrivateCidr:
+    Type: String
+    Default: 172.0.2.0/24
+    Description: Private Cidr range
+
+Resources:
+
+  MoazzamVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VPCCidr
+      EnableDnsSupport: "true"
+      EnableDnsHostnames: "true"
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: MoazzamVPC
+
+###########                 ###################
+########### Subnet Creation ###################
+
+  MoazzamPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      CidrBlock: !Ref PublicCidr
+      MapPublicIpOnLaunch: "true" 
+      VpcId: !Ref MoazzamVPC
+      Tags:
+        - Key: Name
+          Value: MoazzamPublicSubnet
+      AvailabilityZone: 
+        Fn::Select:
+          - "0"
+          - Fn::GetAZs:
+              Ref: AWS::Region
+
+  MoazzamPrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      CidrBlock: !Ref PrivateCidr
+      VpcId: !Ref MoazzamVPC
+      Tags:
+        - Key: Name
+          Value: MoazzamPrivateSubnet
+      AvailabilityZone: 
+        Fn::Select:
+          - "1"
+          - Fn::GetAZs:
+              Ref: AWS::Region
+
+###########                 ###################
+######### Route Table Creation ###############
+  MoazzamPublicRT:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MoazzamVPC
+      Tags:
+        - Key: Name
+          Value: MoazzamPublicRT
+  MoazzamPrivateRT:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MoazzamVPC
+      Tags:
+        - Key: Name
+          Value: MoazzamPrivateRT
+###########                                  #########
+######### Subnet Association to Route Tables ########
+
+  PublicSubnetAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref MoazzamPublicRT
+      SubnetId: !Ref MoazzamPublicSubnet
+  PrivateSubnetAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref MoazzamPrivateRT
+      SubnetId: !Ref MoazzamPrivateSubnet
+###########                                          #########
+######### Internet GateWay  Creation and attachment  ########
+
+  MoazzamIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties: 
+      Tags:
+        - Key: Name
+          Value: MoazzamIGW
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MoazzamVPC
+      InternetGatewayId: !Ref MoazzamIGW
+
+##########                                      ######## 
+########## Nat Gateway Creation and attachment  ########
+
+
+  MoazzamEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: "vpc"
+      Tags:
+        - Key: Name
+          Value: MoazzamEIP
+  MoazzamNATGW:
+    DependsOn: MoazzamEIP
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+         - MoazzamEIP
+         - AllocationId
+      SubnetId: !Ref MoazzamPublicSubnet
+      Tags:
+        - Key: Name
+          Value: MoazzamNATGW
+##########                                      ######## 
+########## Creating Route for IGW and NAT Gateway  ########  
+  PublicRoute:
+    DependsOn: AttachGateway
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref MoazzamPublicRT
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref MoazzamIGW
+  PrivateRoute:
+    DependsOn: MoazzamNATGW
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref MoazzamPrivateRT
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref MoazzamNATGW
+
+####### Specifing The Outputs #########
+
+Outputs:
+  MoazzamPublicSubnetID:
+    Description: Output my Public Subnet ID
+    Value: !Ref MoazzamPublicSubnet
+
+  MoazzamPrivateSubnetID:
+    Description: Output my Private Subnet ID
+    Value: !Ref MoazzamPrivateSubnet
+  
+  VPCID:
+    Description: Output my VPC ID
+    Value: !Ref MoazzamVPC
+  

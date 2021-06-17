@@ -58,9 +58,15 @@ Resources:
               java-1.8.0-openjdk-devel: []
               tomacat8: []
           groups: 
-
-          users: 
-
+            groupone: {}
+            moazzamtestgroup: 
+              gid: "501"
+          users:
+            moazzamtestone:
+              groups:
+                - moazzamtestgroup
+              uid: "502"
+              homeDir: "/home"
           sources: 
 
           files: 

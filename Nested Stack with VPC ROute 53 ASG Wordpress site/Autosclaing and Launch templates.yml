@@ -1,0 +1,120 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Basic EC2 Instance also with git
+
+Parameters:
+
+  MyEC2Type:
+    Description: Parametrizing the  Instance type from SSM
+    Type: String
+  MyKeyName:
+    Description: Parametrizing the key name 
+    Type: String
+  SecurityGroupID:
+    Type: String
+  ALBTGID:
+    Type: String
+  PrivateCidr:
+    Type: String
+  DBIP:
+    Type: String  
+
+Resources:  
+
+
+  myLaunchTemplate: 
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub '${AWS::StackName}-launch-template-for-auto-scaling'
+      LaunchTemplateData:
+        ImageId: ami-03d5c68bab01f3496
+        InstanceType: !Ref MyEC2Type
+        KeyName: !Ref MyKeyName
+        SecurityGroupIds: 
+          - !Ref SecurityGroupID
+        UserData: 
+          Fn::Base64: |
+            #!/bin/bash
+            sudo apt update -y
+            sudo apt upgrade -y
+            sudo apt install apache2 -y
+            sudo systemctl status apache2
+            sudo systemctl start apache2
+            sudo systemctl enable apache2
+            sudo apt install php php-mysql php-gd php-cli php-common -y
+            sudo apt install wget unzip -y
+            sudo wget https://wordpress.org/latest.zip
+            sudo unzip latest.zip
+            sudo cp -r wordpress/* /var/www/html/
+            sudo cp /var/www/html/wp-config-sample.php /var/www/html/wp-config.php
+            sudo sed -i -e 's/localhost/${DBIP}/g' /var/www/html/wp-config.php
+            sudo sed -i -e 's/database_name_here/wordpress/g' /var/www/html/wp-config.php
+            sudo sed -i -e 's/username_here/wordpress/g' /var/www/html/wp-config.php
+            sudo sed -i -e 's/password_here/password/g' /var/www/html/wp-config.php
+            sudo rm -rf /var/www/html/index.html
+            sudo chown www-data:www-data -R /var/www/html/
+ ##############                    #############
+ ##############  Autoscaling Group #############
+  
+  myASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: myASG
+      MinSize: "1"
+      MaxSize: "3"
+      DesiredCapacity: "1"
+      HealthCheckGracePeriod: 200
+      HealthCheckType: ELB
+      TargetGroupARNs:
+        - !Ref ALBTGID
+      LaunchTemplate:
+        LaunchTemplateId: !Ref myLaunchTemplate
+        Version: !GetAtt myLaunchTemplate.LatestVersionNumber
+      VPCZoneIdentifier:
+        - !Ref PrivateCidr
+      Tags:
+        - Key: Environment
+          Value: Production
+          PropagateAtLaunch: "true"
+        - Key: Name
+          Value: WebServerGroup
+          PropagateAtLaunch: "true"
+
+
+
+###########                           ################
+############ Auto Scaling Policies    ################
+
+
+  ASGScalingPolicyHigh: 
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties: 
+      AdjustmentType: "ChangeInCapacity"
+      PolicyType: "SimpleScaling"
+      Cooldown: "300"
+      AutoScalingGroupName: !Ref myASG
+      ScalingAdjustment: 1
+
+  ASGScalingPolicyLow: 
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties: 
+      AdjustmentType: "ChangeInCapacity"
+      PolicyType: "SimpleScaling"
+      Cooldown: "300"
+      AutoScalingGroupName: !Ref myASG
+      ScalingAdjustment: -1
+
+
+
+Outputs:
+
+  MyASGID:
+    Description: Output my Public Subnet ID
+    Value: !Ref myASG
+
+  ASGScalingPolicyHigh:
+    Description: Output my scaling policy ID
+    Value: !Ref ASGScalingPolicyHigh
+
+  ASGScalingPolicyLow:
+    Description: Output my scaling policy ID
+    Value: !Ref ASGScalingPolicyLow

@@ -1,0 +1,125 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Nested Stack testing
+
+Parameters:
+  VPCCidr:
+    Type: String
+    Default: 172.0.0.0/16
+    Description: VPC Cidr range
+  PublicCidr:
+    Type: String
+    Default: 172.0.1.0/24
+    Description: Public Cidr range
+  PrivateCidr:
+    Type: String
+    Default: 172.0.2.0/24
+    Description: Private Cidr range
+  MyKeyName:
+    Description: Parametrizing the key name 
+    Type: AWS::EC2::KeyPair::KeyName
+  MyPublicAZ:
+    Description: Parametrizing the  Availabilty Zone
+    Type: String
+    Default: us-west-2a
+    AllowedValues:
+      - us-west-2a
+      - us-west-2b
+      - us-west-2c
+  MyPrivateAZ:
+    Description: Parametrizing the  Availabilty Zone
+    Type: String
+    Default: us-west-2b
+    AllowedValues:
+      - us-west-2a
+      - us-west-2b
+      - us-west-2c
+  MyEC2Type:
+    Description: Parametrizing the  Instance type from SSM
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.small
+      - t2.micro
+
+Resources:
+
+  VPCStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "https://moazzam-nclouds.s3-us-west-2.amazonaws.com/Nesting/12-cfn-nestedstack-VPC.yml"
+      Parameters:
+        VPCCidr: !Ref VPCCidr
+        PublicCidr: !Ref PublicCidr
+        PrivateCidr: !Ref PrivateCidr
+      TimeoutInMinutes: "5"
+
+  SGStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "https://moazzam-nclouds.s3-us-west-2.amazonaws.com/Nesting/14-cfn-nestedstack-SG.yml"
+      Parameters:
+        MoazzamVPCID: !GetAtt VPCStack.Outputs.VPCID
+      TimeoutInMinutes: "5"
+
+  MoazzamEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-03d5c68bab01f3496
+      InstanceType: !Ref MyEC2Type
+      KeyName: !Ref MyKeyName
+      AvailabilityZone: !Ref MyPublicAZ
+      UserData: 
+        Fn::Base64: |
+          #!/bin/bash
+          sudo apt update -y
+          sudo apt upgrade -y
+          sudo apt install apache2 -y
+          sudo systemctl status apache2
+          sudo systemctl start apache2
+          sudo systemctl enable apache2
+          sudo apt install php php-mysql php-gd php-cli php-common -y
+          sudo apt install wget unzip -y
+          sudo wget https://wordpress.org/latest.zip
+          sudo unzip latest.zip
+          sudo cp -r wordpress/* /var/www/html/
+          cd /var/www/html
+          sudo rm -rf index.html
+          sudo chown www-data:www-data -R /var/www/html/
+      NetworkInterfaces: 
+        - AssociatePublicIpAddress: "true"
+          DeviceIndex: "0"
+          SubnetId: !GetAtt VPCStack.Outputs.MoazzamPublicSubnetID
+          GroupSet: 
+            - !GetAtt SGStack.Outputs.MySGID
+  Databaseinstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-03d5c68bab01f3496
+      InstanceType: !Ref MyEC2Type
+      KeyName: !Ref MyKeyName
+      AvailabilityZone: !Ref MyPrivateAZ
+      UserData: 
+        Fn::Base64: |
+          #!/bin/bash
+          sudo apt update -y
+          sudo apt upgrade -y
+          sudo apt install mysql-server -y
+          sudo mysql -u root 
+          mysql -e "CREATE DATABASE wordpress;"
+          mysql -e "CREATE USER 'wordpress'@'%' IDENTIFIED BY 'password';"
+          mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'wordpress'@'%';"
+          mysql -e "FLUSH PRIVILEGES;"
+          mysql -e "exit;"
+          sudo sed -i "s/.*bind-address.*/bind-address = 0.0.0.0/" /etc/mysql/mysql.conf.d/mysqld.cnf
+          sudo systemctl restart mysql
+      NetworkInterfaces: 
+        - AssociatePublicIpAddress: "false"
+          DeviceIndex: "0"
+          SubnetId: !GetAtt VPCStack.Outputs.MoazzamPrivateSubnetID
+          GroupSet: 
+            - !GetAtt SGStack.Outputs.MySGID
+
+Outputs:
+  AppUrl:
+    Description: Application Url to access
+    Value: !Sub 'http://${MoazzamEC2Instance.PublicDnsName}:80'

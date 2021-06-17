@@ -58,11 +58,17 @@ Resources:
               java-1.8.0-openjdk-devel: []
               tomacat8: []
           groups: 
-
-          users: 
-
+            groupone: {}
+            moazzamtestgroup: 
+              gid: "501"
+          users:
+            moazzamtestone:
+              groups:
+                - moazzamtestgroup
+              uid: "502"
+              homeDir: "/home"
           sources: 
-
+            /tmp: "https://moazzam-nclouds.s3-us-west-2.amazonaws.com/cfn/WAR-Files/demo1.zip"
           files: 
 
           commands: 

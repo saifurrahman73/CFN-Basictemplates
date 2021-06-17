@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Basic EC2 Instance also with git
+
+Parameters:
+  PublicCidr:
+    Type: String
+  PrivateCidr:
+    Type: String
+  VPCStack:
+    Type: String
+  SecurityGroupID:
+    Type: String
+
+  
+Resources:  
+  MyApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      IpAddressType: ipv4
+      Name: MoazzamApplicationLoadBalancer
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref SecurityGroupID
+      Subnets: 
+        - !Ref PublicCidr
+        - !Ref PrivateCidr
+  
+  MyLoadBalancerTG:
+    DependsOn: MyApplicationLoadBalancer
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: MoazzamApplicationLoadBalancerTG
+      HealthCheckIntervalSeconds: 60
+      HealthCheckPath: /
+      HealthCheckPort: traffic-port
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 30
+      HealthyThresholdCount: 5
+      Port: 80
+      Protocol: HTTP
+      Matcher:
+        HttpCode: 200,399,302,301
+      UnhealthyThresholdCount: 3
+      TargetType: instance
+      VpcId: !Ref VPCStack
+
+  MyLoadBalancerListener:
+    DependsOn: MyLoadBalancerTG 
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref MyLoadBalancerTG
+          Type: 'forward'
+      LoadBalancerArn: !Ref MyApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+Outputs:
+  ALBID:
+    Description: Application load balancer output ID 
+    Value: !Ref MyApplicationLoadBalancer
+  ALBZoneID:
+    Description: Application load balancer output ID 
+    Value: !GetAtt MyApplicationLoadBalancer.CanonicalHostedZoneID
+  ALBTGID:
+    Description: Application LoadBalancer TargetGroup ID
+    Value: !Ref MyLoadBalancerTG
+  ALBDNS:
+    Description: Application load balancer output ID 
+    Value: !GetAtt 'MyApplicationLoadBalancer.DNSName'

@@ -1,0 +1,385 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Basic EC2 Instance also with git 
+
+Parameters:
+  CPUPolicyTargetValue:
+    Type: String
+
+  VPCCidr:
+    Type: String
+    Default: 172.0.0.0/16
+    Description: VPC Cidr range
+  PublicCidrone:
+    Type: String
+    Default: 172.0.1.0/24
+    Description: Public one Cidr range
+  PrivateCidrtwo:
+    Type: String
+    Default: 172.0.3.0/24
+    Description: Public two Cidr range
+  PrivateCidr:
+    Type: String
+    Default: 172.0.2.0/24
+    Description: Private Cidr range
+
+  MyKeyName:
+    Description: Parametrizing the key name 
+    Type: AWS::EC2::KeyPair::KeyName
+  MyPublicAZ:
+    Description: Parametrizing the  Availabilty Zone
+    Type: String
+    Default: us-west-2a
+    AllowedValues:
+      - us-west-2a
+      - us-west-2b
+      - us-west-2c
+  MyPrivateAZ:
+    Description: Parametrizing the  Availabilty Zone
+    Type: String
+    Default: us-west-2b
+    AllowedValues:
+      - us-west-2a
+      - us-west-2b
+      - us-west-2c
+  MyEC2Type:
+    Description: Parametrizing the  Instance type from SSM
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.small
+      - t2.micro
+
+
+Resources:
+
+
+  SSHSecurity: 
+    DependsOn: MoazzamVPC
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SSH  Security Group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: "22"
+          ToPort: "22"
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: "3306"
+          ToPort: "3306"
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: "80"
+          ToPort: "80"
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: "8080"
+          ToPort: "8080"
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref MoazzamVPC
+
+
+  MoazzamVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VPCCidr
+      EnableDnsSupport: "true"
+      EnableDnsHostnames: "true"
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: MoazzamVPC
+
+###########                 ###################
+########### Subnet Creation ###################
+
+  MoazzamPublicSubnetOne:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      CidrBlock: !Ref PublicCidrone
+      MapPublicIpOnLaunch: "true" 
+      VpcId: !Ref MoazzamVPC
+      Tags:
+        - Key: Name
+          Value: MoazzamPublicSubnetOne
+      AvailabilityZone: 
+        Fn::Select:
+          - "0"
+          - Fn::GetAZs:
+              Ref: AWS::Region
+  MoazzamPrivateSubnetTwo:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      CidrBlock: !Ref PrivateCidrtwo
+      VpcId: !Ref MoazzamVPC
+      Tags:
+        - Key: Name
+          Value: MoazzamPrivateSubnetTwo
+      AvailabilityZone: 
+        Fn::Select:
+          - "2"
+          - Fn::GetAZs:
+              Ref: AWS::Region
+
+  MoazzamPrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      CidrBlock: !Ref PrivateCidr
+      VpcId: !Ref MoazzamVPC
+      Tags:
+        - Key: Name
+          Value: MoazzamPrivateSubnet
+      AvailabilityZone: 
+        Fn::Select:
+          - "1"
+          - Fn::GetAZs:
+              Ref: AWS::Region
+
+###########                 ###################
+######### Route Table Creation ###############
+  MoazzamPublicRT:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MoazzamVPC
+      Tags:
+        - Key: Name
+          Value: MoazzamPublicRT
+  MoazzamPrivateRT:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MoazzamVPC
+      Tags:
+        - Key: Name
+          Value: MoazzamPrivateRT
+###########                                  #########
+######### Subnet Association to Route Tables ########
+
+  PublicSubnetAssociationOne:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref MoazzamPublicRT
+      SubnetId: !Ref MoazzamPublicSubnetOne
+  PrivateSubnetAssociationTwo:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref MoazzamPrivateRT
+      SubnetId: !Ref MoazzamPrivateSubnetTwo
+  PrivateSubnetAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref MoazzamPrivateRT
+      SubnetId: !Ref MoazzamPrivateSubnet
+###########                                          #########
+######### Internet GateWay  Creation and attachment  ########
+
+  MoazzamIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties: 
+      Tags:
+        - Key: Name
+          Value: MoazzamIGW
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MoazzamVPC
+      InternetGatewayId: !Ref MoazzamIGW
+
+##########                                      ######## 
+########## Nat Gateway Creation and attachment  ########
+
+
+  MoazzamEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: "vpc"
+      Tags:
+        - Key: Name
+          Value: MoazzamEIP
+  MoazzamNATGW:
+    DependsOn: MoazzamEIP
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+         - MoazzamEIP
+         - AllocationId
+      SubnetId: !Ref MoazzamPublicSubnetOne
+      Tags:
+        - Key: Name
+          Value: MoazzamNATGW
+##########                                      ######## 
+########## Creating Route for IGW and NAT Gateway  ########  
+  PublicRoute:
+    DependsOn: AttachGateway
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref MoazzamPublicRT
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref MoazzamIGW
+  PrivateRoute:
+    DependsOn: MoazzamNATGW
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref MoazzamPrivateRT
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref MoazzamNATGW
+
+
+
+  myLaunchTemplate: 
+    DependsOn: SSHSecurity
+    Type: 'AWS::EC2::LaunchTemplate'
+    Properties:
+      LaunchTemplateName: !Sub '${AWS::StackName}-launch-template-for-auto-scaling'
+      LaunchTemplateData:
+        ImageId: ami-03d5c68bab01f3496
+        InstanceType: !Ref MyEC2Type
+        KeyName: !Ref MyKeyName
+        SecurityGroupIds: 
+          - !Ref SSHSecurity
+        UserData: 
+          Fn::Base64: |
+            #!/bin/bash
+            sudo apt update -y
+            sudo apt upgrade -y
+            sudo apt install apache2 -y
+            sudo systemctl status apache2
+            sudo systemctl start apache2
+            sudo systemctl enable apache2
+            sudo apt install php php-mysql php-gd php-cli php-common -y
+            sudo apt install wget unzip -y
+            sudo wget https://wordpress.org/latest.zip
+            sudo unzip latest.zip
+            sudo cp -r wordpress/* /var/www/html/
+            cd /var/www/html
+            sudo rm -rf index.html
+            sudo chown www-data:www-data -R /var/www/html/
+    
+  MyLoadBalancer:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      CrossZone: "true"
+      SecurityGroups:
+        - !Ref SSHSecurity
+      Subnets:
+        - !Ref MoazzamPublicSubnetOne
+        - !Ref MoazzamPrivateSubnet
+      Listeners:
+      - LoadBalancerPort: '80'
+        InstancePort: '80'
+        Protocol: HTTP
+      HealthCheck:
+        Target: TCP:80
+        HealthyThreshold: '2'
+        UnhealthyThreshold: '5'
+        Interval: '60'
+        Timeout: '30'
+
+
+  MyApplicationLoadBalancer:
+    DependsOn: [MoazzamPublicSubnetOne, MoazzamPrivateSubnetTwo]
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      Type: application
+      IpAddressType: ipv4
+      Name: MoazzamApplicationLoadBalancer
+      Scheme: internet-facing
+      SecurityGroups: 
+        - !Ref SSHSecurity
+      Subnets: 
+        - !Ref MoazzamPublicSubnetOne
+        - !Ref MoazzamPrivateSubnet
+
+  
+  MyLoadBalancerTG:
+    DependsOn: MyLoadBalancer
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: MoazzamApplicationLoadBalancerTG
+      HealthCheckIntervalSeconds: 60
+      HealthCheckPath: /
+      HealthCheckPort: traffic-port
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 30
+      HealthyThresholdCount: 5
+      Port: 80
+      Protocol: HTTP
+      Matcher:
+        HttpCode: 200,399,302,301
+      UnhealthyThresholdCount: 3
+      TargetType: instance
+      VpcId: !Ref MoazzamVPC
+
+  MyLoadBalancerListener:
+    DependsOn: MyLoadBalancerTG 
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref MyLoadBalancerTG
+          Type: 'forward'
+      LoadBalancerArn: !Ref MyApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  myASG:
+    DependsOn: AttachGateway
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: myASG
+      MinSize: "1"
+      MaxSize: "3"
+      DesiredCapacity: "1"
+      HealthCheckGracePeriod: 200
+      HealthCheckType: ELB
+      TargetGroupARNs:
+        - !Ref MyLoadBalancerTG
+      LaunchTemplate:
+        LaunchTemplateId: !Ref myLaunchTemplate
+        Version: !GetAtt myLaunchTemplate.LatestVersionNumber
+      VPCZoneIdentifier:
+        - !Ref MoazzamPrivateSubnet
+      Tags:
+        - Key: Environment
+          Value: Production
+          PropagateAtLaunch: "true"
+        - Key: Purpose
+          Value: WebServerGroup
+          PropagateAtLaunch: "false"
+
+
+  myCPUPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref myASG
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+        TargetValue: !Ref CPUPolicyTargetValue
+
+  Databaseinstance:
+    DependsOn: [SSHSecurity, PrivateRoute]
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-03d5c68bab01f3496
+      InstanceType: !Ref MyEC2Type
+      KeyName: !Ref MyKeyName
+      AvailabilityZone: !Ref MyPrivateAZ
+      UserData: 
+        Fn::Base64: |
+          #!/bin/bash
+          set -x
+          sudo apt update -y
+          sudo apt upgrade -y
+          sudo apt install mysql-server -y
+          sudo mysql -u root 
+          mysql -e "CREATE DATABASE wordpress;"
+          mysql -e "CREATE USER 'wordpress'@'%' IDENTIFIED BY 'password';"
+          mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'wordpress'@'%';"
+          mysql -e "FLUSH PRIVILEGES;"
+          mysql -e "exit;"
+          sudo sed -i "s/.*bind-address.*/bind-address = 0.0.0.0/" /etc/mysql/mysql.conf.d/mysqld.cnf
+          sudo systemctl restart mysql
+      SubnetId: !Ref MoazzamPrivateSubnetTwo
+      SecurityGroupIds:
+        - !Ref SSHSecurity
