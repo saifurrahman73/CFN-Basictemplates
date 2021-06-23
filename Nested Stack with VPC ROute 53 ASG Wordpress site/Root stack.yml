@@ -1,0 +1,131 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Basic EC2 Instance also with git 
+
+Parameters:
+  VPCCidr:
+    Type: String
+    Default: 172.0.0.0/16
+    Description: VPC Cidr range
+  PublicCidr:
+    Type: String
+    Default: 172.0.1.0/24
+    Description: Public one Cidr range
+  PrivateCidrOne:
+    Type: String
+    Default: 172.0.3.0/24
+    Description: Public two Cidr range
+  PrivateCidrTwo:
+    Type: String
+    Default: 172.0.2.0/24
+    Description: Private Cidr range
+
+  MyKeyName:
+    Description: Parametrizing the key name 
+    Type: AWS::EC2::KeyPair::KeyName
+  MyPublicAZ:
+    Description: Parametrizing the  Availabilty Zone
+    Type: String
+    Default: us-west-2a
+    AllowedValues:
+      - us-west-2a
+      - us-west-2b
+      - us-west-2c
+  MyPrivateAZ:
+    Description: Parametrizing the  Availabilty Zone
+    Type: String
+    Default: us-west-2c
+    AllowedValues:
+      - us-west-2a
+      - us-west-2b
+      - us-west-2c
+  MyEC2Type:
+    Description: Parametrizing the  Instance type from SSM
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.small
+      - t2.micro
+
+
+Resources:
+
+
+
+  VPCStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "https://moazzam-nclouds.s3.us-west-2.amazonaws.com/Nesting/VPC.yml"
+      Parameters:
+        VPCCidr: !Ref VPCCidr
+        PublicCidrone: !Ref PublicCidr
+        PrivateCidr: !Ref PrivateCidrTwo
+        PrivateCidrtwo: !Ref PrivateCidrOne
+      TimeoutInMinutes: "5"
+
+  SecurityGroupStack:
+    DependsOn: VPCStack
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "https://moazzam-nclouds.s3.us-west-2.amazonaws.com/Nesting/SecurityGroups.yml"
+      Parameters:
+        MoazzamVPCID: !GetAtt VPCStack.Outputs.VPCID
+      TimeoutInMinutes: "5"
+  ALBStack:
+    DependsOn: [VPCStack,SecurityGroupStack]
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        VPCStack: !GetAtt VPCStack.Outputs.VPCID
+        PublicCidr: !GetAtt VPCStack.Outputs.MoazzamPublicSubnetID
+        PrivateCidr: !GetAtt VPCStack.Outputs.MoazzamPrivateSubnetOneID
+        SecurityGroupID: !GetAtt SecurityGroupStack.Outputs.MySGID
+      TemplateURL: "https://moazzam-nclouds.s3.us-west-2.amazonaws.com/Nesting/Application+load+Balancer.yml"
+      TimeoutInMinutes: "5"
+  ASGStack:
+    DependsOn: [VPCStack,SecurityGroupStack,ALBStack]
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "https://moazzam-nclouds.s3.us-west-2.amazonaws.com/Nesting/Autosclaing+and+Launch+templates.yml"
+      Parameters:
+        SecurityGroupID: !GetAtt SecurityGroupStack.Outputs.MySGID
+        ALBTGID: !GetAtt ALBStack.Outputs.ALBTGID
+        PrivateCidr: !GetAtt VPCStack.Outputs.MoazzamPrivateSubnetOneID
+        MyKeyName: !Ref MyKeyName
+        DBIP: !GetAtt EC2Stack.Outputs.DBIP
+        MyEC2Type: !Ref MyEC2Type
+      TimeoutInMinutes: "5"
+  EC2Stack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "https://moazzam-nclouds.s3.us-west-2.amazonaws.com/Nesting/EC2+Instances.yml"
+      Parameters:
+        SecurityGroupID: !GetAtt SecurityGroupStack.Outputs.MySGID
+        MyPrivateAZ: !Ref MyPrivateAZ
+        MyKeyName: !Ref MyKeyName
+        MyEC2Type: !Ref MyEC2Type
+        PrivateCidrtwo: !GetAtt VPCStack.Outputs.MoazzamPrivateSubnetTwoID
+      TimeoutInMinutes: "5"
+
+  Route53Stack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "https://moazzam-nclouds.s3.us-west-2.amazonaws.com/Nesting/Route+53.yml"
+      Parameters:
+        ALBZoneID: !GetAtt ALBStack.Outputs.ALBZoneID
+        ALBDNS: !GetAtt ALBStack.Outputs.ALBDNS
+      TimeoutInMinutes: "5"
+ 
+
+  CloudwatchStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: "https://moazzam-nclouds.s3.us-west-2.amazonaws.com/Nesting/Cloud+Watch.yml"
+      Parameters:
+        MyASGID: !GetAtt ASGStack.Outputs.MyASGID
+        ASGScalingPolicyLow: !GetAtt ASGStack.Outputs.ASGScalingPolicyLow
+        ASGScalingPolicyHigh: !GetAtt ASGStack.Outputs.ASGScalingPolicyHigh
+      TimeoutInMinutes: "5"
+
+
+
+

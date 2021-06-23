@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Basic EC2 Instance also with git
+
+Parameters:
+
+  SecurityGroupID:
+    Type: String
+  MyEC2Type:
+    Description: Parametrizing the  Instance type from SSM
+    Type: String
+  MyKeyName:
+    Description: Parametrizing the key name 
+    Type: String
+  MyPrivateAZ:
+    Description: Parametrizing the  Availabilty Zone
+    Type: String
+  PrivateCidrtwo:
+    Type: String
+
+    
+Resources: 
+  Databaseinstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-03d5c68bab01f3496
+      InstanceType: !Ref MyEC2Type
+      KeyName: !Ref MyKeyName
+      AvailabilityZone: !Ref MyPrivateAZ
+      UserData: 
+        Fn::Base64: |
+          #!/bin/bash
+          set -x
+          sudo apt update -y
+          sudo apt upgrade -y
+          sudo apt install mysql-server -y
+          sudo mysql -u root 
+          mysql -e "CREATE DATABASE wordpress;"
+          mysql -e "CREATE USER 'wordpress'@'%' IDENTIFIED BY 'password';"
+          mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'wordpress'@'%';"
+          mysql -e "FLUSH PRIVILEGES;"
+          mysql -e "exit;"
+          sudo sed -i "s/.*bind-address.*/bind-address = 0.0.0.0/" /etc/mysql/mysql.conf.d/mysqld.cnf
+          sudo systemctl restart mysql
+      SubnetId: !Ref PrivateCidrtwo
+      SecurityGroupIds:
+        - !Ref SecurityGroupID
+
+
+Outputs:
+  DBIP:
+    Description: Application load balancer output ID 
+    Value: !GetAtt 'Databaseinstance.PrivateIp'

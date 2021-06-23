@@ -1,0 +1,22 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Basic EC2 Instance also with git
+
+Parameters:
+
+  ALBZoneID:
+    Type: String
+  ALBDNS:
+    Type: String
+
+Resources:
+  myDNS:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneName: test-something.com.
+      Comment: Zone apex alias targeted to myELB LoadBalancer.
+      RecordSets:
+      - Name: moazzam1.test-something.com.
+        Type: A
+        AliasTarget:
+          HostedZoneId: !Ref ALBZoneID
+          DNSName: !Ref ALBDNS

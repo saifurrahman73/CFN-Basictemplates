@@ -1,0 +1,49 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CloudWatch alaram for scaling
+
+
+Parameters:
+
+  ASGScalingPolicyHigh:
+    Type: String
+  ASGScalingPolicyLow:
+    Type: String
+  MyASGID:
+    Type: String   
+  
+  
+  
+Resources:  
+  
+  CPUAlarmHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Scale-up if CPU is greater than 30% for 10 minutes
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '30'
+      AlarmActions:
+        - !Ref ASGScalingPolicyHigh
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref MyASGID
+      ComparisonOperator: GreaterThanThreshold
+  CPUAlarmLow:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Scale-down if CPU is less than 20% for 10 minutes
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: '60'
+      EvaluationPeriods: '2'
+      Threshold: '20'
+      AlarmActions:
+        - !Ref ASGScalingPolicyLow
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref MyASGID
+      ComparisonOperator: LessThanThreshold

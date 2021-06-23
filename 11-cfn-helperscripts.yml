@@ -16,10 +16,11 @@ Parameters:
   
   MyEC2Type:
     Description: Parametrizing the  Instance type from SSM
-    Type: t2.micro
-    Default: us-west-2a
+    Type: String
+    Default: t2.micro
     AllowedValues:
       - t2.small
+      - t2.micro
       - t2.medium
 
 
